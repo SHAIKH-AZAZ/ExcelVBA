@@ -1,24 +1,36 @@
 Option Explicit
 
-Sub Copy_FilterColumns_ValuesOnly_WithShapes()
+'=========================
+' MAIN MACRO
+'=========================
+Public Sub Copy_FilterColumns_ValuesOnly_WithShapes_Refined()
+
+    Const SRC_SHEET As String = "base_format"
+    Const DST_SHEET As String = "Filter_format"
+    Const SRC_HEADER_ROW As Long = 2
+    Const DST_HEADER_ROW As Long = 2
+
     Dim wsSrc As Worksheet, wsDst As Worksheet
-    Dim srcHeaderRow As Long, dstHeaderRow As Long
     Dim srcStartRow As Long, dstStartRow As Long
-    Dim lastRow As Long
+    Dim srcCodeCol As Long, dstShapeCol As Long
+    Dim lastRow As Long, dstLastRow As Long
+
     Dim map As Variant
     Dim i As Long
     Dim srcCol As Long, dstCol As Long
-    Dim srcCodeCol As Long, dstShapeCol As Long
 
-    Set wsSrc = ThisWorkbook.Worksheets("base_format")
-    Set wsDst = ThisWorkbook.Worksheets("Filter_format")
+    Dim calcMode As XlCalculation
+    Dim scrUpdate As Boolean, evt As Boolean
 
-    srcHeaderRow = 2
-    dstHeaderRow = 2
-    srcStartRow = srcHeaderRow + 1
-    dstStartRow = dstHeaderRow + 1
+    On Error GoTo EH
 
-    'SourceHeader -> DestinationHeader
+    Set wsSrc = ThisWorkbook.Worksheets(SRC_SHEET)
+    Set wsDst = ThisWorkbook.Worksheets(DST_SHEET)
+
+    srcStartRow = SRC_HEADER_ROW + 1
+    dstStartRow = DST_HEADER_ROW + 1
+
+    '---- SourceHeader -> DestinationHeader (edit if needed)
     map = Array( _
         Array("Description", "MEMBER / Discription"), _
         Array("Bar Mark", "BAR MARKS"), _
@@ -33,106 +45,93 @@ Sub Copy_FilterColumns_ValuesOnly_WithShapes()
         Array("Weight (Kg)", "Weight (Kg)") _
     )
 
+    '---- Speed settings
+    scrUpdate = Application.ScreenUpdating
+    evt = Application.EnableEvents
+    calcMode = Application.Calculation
+
     Application.ScreenUpdating = False
     Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
 
-    'Last row based on Code
-    srcCol = FindHeaderCol(wsSrc, srcHeaderRow, "Code")
-    If srcCol = 0 Then
-        MsgBox "Source header 'Code' not found.", vbExclamation
-        GoTo CleanExit
-    End If
-    lastRow = wsSrc.Cells(wsSrc.Rows.Count, srcCol).End(xlUp).Row
+    '---- Find last row using Code column
+    srcCodeCol = FindHeaderColSmart(wsSrc, SRC_HEADER_ROW, "Code")
+    If srcCodeCol = 0 Then Err.Raise vbObjectError + 101, , "Source header 'Code' not found."
+
+    lastRow = wsSrc.Cells(wsSrc.Rows.Count, srcCodeCol).End(xlUp).Row
     If lastRow < srcStartRow Then GoTo CleanExit
 
-    'Clear destination mapped columns (data area)
-    For i = LBound(map) To UBound(map)
-        dstCol = FindHeaderCol(wsDst, dstHeaderRow, CStr(map(i)(1)))
-        If dstCol > 0 Then
-            wsDst.Range(wsDst.Cells(dstStartRow, dstCol), wsDst.Cells(wsDst.Rows.Count, dstCol)).ClearContents
-        End If
-    Next i
+    dstLastRow = dstStartRow + (lastRow - srcStartRow)
 
-    'Delete destination shapes in Shape column
-    dstShapeCol = FindHeaderCol(wsDst, dstHeaderRow, "Shape")
-    If dstShapeCol > 0 Then DeleteShapesInColumnFromRow wsDst, dstShapeCol, dstStartRow
-
-    'COPY: Values + Formats (NO formulas)
-    For i = LBound(map) To UBound(map)
-        Dim sHdr As String, dHdr As String
-        sHdr = CStr(map(i)(0))
-        dHdr = CStr(map(i)(1))
-
-        srcCol = FindHeaderCol(wsSrc, srcHeaderRow, sHdr)
-        dstCol = FindHeaderCol(wsDst, dstHeaderRow, dHdr)
-
-        If srcCol > 0 And dstCol > 0 Then
-            'Column width
-            wsDst.Columns(dstCol).ColumnWidth = wsSrc.Columns(srcCol).ColumnWidth
-
-            With wsDst.Range(wsDst.Cells(dstStartRow, dstCol), wsDst.Cells(dstStartRow + (lastRow - srcStartRow), dstCol))
-                .Value = wsSrc.Range(wsSrc.Cells(srcStartRow, srcCol), wsSrc.Cells(lastRow, srcCol)).Value
-                .NumberFormat = wsSrc.Range(wsSrc.Cells(srcStartRow, srcCol), wsSrc.Cells(lastRow, srcCol)).NumberFormat
-                .Font.Name = wsSrc.Range(wsSrc.Cells(srcStartRow, srcCol), wsSrc.Cells(lastRow, srcCol)).Font.Name
-                .Font.Size = wsSrc.Range(wsSrc.Cells(srcStartRow, srcCol), wsSrc.Cells(lastRow, srcCol)).Font.Size
-            End With
-
-            'Optional: Copy full cell formatting (borders, fill, etc.)
-            wsSrc.Range(wsSrc.Cells(srcStartRow, srcCol), wsSrc.Cells(lastRow, srcCol)).Copy
-            wsDst.Cells(dstStartRow, dstCol).PasteSpecial xlPasteFormats
-        End If
-    Next i
-
-    Application.CutCopyMode = False
-
-    'Copy shapes by NAME = Code_Row (e.g., 12_5)
-    srcCodeCol = FindHeaderCol(wsSrc, srcHeaderRow, "Code")
-    dstShapeCol = FindHeaderCol(wsDst, dstHeaderRow, "Shape")
-    If srcCodeCol > 0 And dstShapeCol > 0 Then
-        CopyShapesByCodeRow wsSrc, wsDst, srcCodeCol, srcStartRow, lastRow, dstStartRow, dstShapeCol
+    '---- Find destination Shape column and clear old shapes only in that area
+    dstShapeCol = FindHeaderColSmart(wsDst, DST_HEADER_ROW, "Shape")
+    If dstShapeCol > 0 Then
+        DeleteShapesInColumnRange wsDst, dstShapeCol, dstStartRow, dstLastRow
     End If
 
-CleanExit:
-    Application.ScreenUpdating = True
-    Application.EnableEvents = True
-End Sub
-
-
-'--- Find column number by header text (exact)
-Private Function FindHeaderCol(ByVal ws As Worksheet, ByVal headerRow As Long, ByVal headerText As String) As Long
-    Dim lastCol As Long, c As Long, txt As String
-    lastCol = ws.Cells(headerRow, ws.Columns.Count).End(xlToLeft).Column
-    For c = 1 To lastCol
-        txt = Trim$(CStr(ws.Cells(headerRow, c).Value2))
-        If StrComp(txt, Trim$(headerText), vbTextCompare) = 0 Then
-            FindHeaderCol = c
-            Exit Function
+    '---- Clear destination mapped columns ONLY for target rows (not whole sheet)
+    For i = LBound(map) To UBound(map)
+        dstCol = FindHeaderColSmart(wsDst, DST_HEADER_ROW, CStr(map(i)(1)))
+        If dstCol > 0 Then
+            wsDst.Range(wsDst.Cells(dstStartRow, dstCol), wsDst.Cells(dstLastRow, dstCol)).ClearContents
         End If
-    Next c
-    FindHeaderCol = 0
-End Function
-
-Private Function ShapeExists(ByVal ws As Worksheet, ByVal shpName As String) As Boolean
-    On Error Resume Next
-    ShapeExists = Not ws.Shapes(shpName) Is Nothing
-    On Error GoTo 0
-End Function
-
-Private Sub DeleteShapesInColumnFromRow(ByVal ws As Worksheet, ByVal targetCol As Long, ByVal startRow As Long)
-    Dim i As Long
-    For i = ws.Shapes.Count To 1 Step -1
-        On Error Resume Next
-        If Not ws.Shapes(i).TopLeftCell Is Nothing Then
-            If ws.Shapes(i).TopLeftCell.Column = targetCol And ws.Shapes(i).TopLeftCell.Row >= startRow Then
-                ws.Shapes(i).Delete
-            End If
-        End If
-        On Error GoTo 0
     Next i
+
+    '---- Copy columns: VALUES only + formats + width
+    For i = LBound(map) To UBound(map)
+
+        srcCol = FindHeaderColSmart(wsSrc, SRC_HEADER_ROW, CStr(map(i)(0)))
+        dstCol = FindHeaderColSmart(wsDst, DST_HEADER_ROW, CStr(map(i)(1)))
+
+        If srcCol > 0 And dstCol > 0 Then
+            'Width
+            wsDst.Columns(dstCol).ColumnWidth = wsSrc.Columns(srcCol).ColumnWidth
+
+            'Values (prevents #REF!)
+            wsDst.Range(wsDst.Cells(dstStartRow, dstCol), wsDst.Cells(dstLastRow, dstCol)).Value = _
+                wsSrc.Range(wsSrc.Cells(srcStartRow, srcCol), wsSrc.Cells(lastRow, srcCol)).Value
+
+            'Number formats
+            wsDst.Range(wsDst.Cells(dstStartRow, dstCol), wsDst.Cells(dstLastRow, dstCol)).NumberFormat = _
+                wsSrc.Range(wsSrc.Cells(srcStartRow, srcCol), wsSrc.Cells(lastRow, srcCol)).NumberFormat
+
+            'Cell formats (borders/fill/etc.)
+            wsSrc.Range(wsSrc.Cells(srcStartRow, srcCol), wsSrc.Cells(lastRow, srcCol)).Copy
+            wsDst.Cells(dstStartRow, dstCol).PasteSpecial xlPasteFormats
+            Application.CutCopyMode = False
+        End If
+
+    Next i
+
+    '---- Copy shapes by name: Code_Row (e.g. 12_5)
+    dstShapeCol = FindHeaderColSmart(wsDst, DST_HEADER_ROW, "Shape")
+    If dstShapeCol > 0 Then
+        CopyShapesByCodeRow_FitToCell wsSrc, wsDst, srcCodeCol, srcStartRow, lastRow, dstStartRow, dstShapeCol
+    End If
+
+    'Finish: select a cell so no shape stays selected
+    ' wsDst.Range("A1").Select
+    ClearShapeSelectionSafe
+    
+CleanExit:
+    Application.ScreenUpdating = scrUpdate
+    Application.EnableEvents = evt
+    Application.Calculation = calcMode
+    Exit Sub
+
+EH:
+    'Restore settings then show error
+    Application.ScreenUpdating = scrUpdate
+    Application.EnableEvents = evt
+    Application.Calculation = calcMode
+    MsgBox "Error: " & Err.Number & vbCrLf & Err.Description, vbExclamation
 End Sub
 
-'--- Copy shape whose name is Code_SourceRow (ex: 12_5) and paste into destination Shape cell on same data row
-Private Sub CopyShapesByCodeRow( _
+
+'=========================
+' SHAPES: Copy by name (Code_Row) and fit into Shape cell
+'=========================
+Private Sub CopyShapesByCodeRow_FitToCell( _
     ByVal wsSrc As Worksheet, ByVal wsDst As Worksheet, _
     ByVal srcCodeCol As Long, _
     ByVal srcStartRow As Long, ByVal srcLastRow As Long, _
@@ -146,55 +145,54 @@ Private Sub CopyShapesByCodeRow( _
     Dim pasted As Shape
 
     For r = srcStartRow To srcLastRow
+
         codeVal = wsSrc.Cells(r, srcCodeCol).Value2
-        If Len(Trim$(CStr(codeVal))) > 0 Then
+        If Len(Trim$(CStr(codeVal))) = 0 Then GoTo NextR
 
-            shpName = Trim$(CStr(codeVal)) & "_" & CStr(r)
+        shpName = Trim$(CStr(codeVal)) & "_" & CStr(r)
 
-            If ShapeExists(wsSrc, shpName) Then
-                Set shp = wsSrc.Shapes(shpName)
-                dstRow = dstStartRow + (r - srcStartRow)
-                Set dstCell = wsDst.Cells(dstRow, dstShapeCol)
+        If Not ShapeExists(wsSrc, shpName) Then GoTo NextR
 
-                ' Set pasted = SafeCopyPasteShape(shp, wsDst)
-                Set pasted = SafeCopyPasteShape(shp, wsDst, dstCell)
+        Set shp = wsSrc.Shapes(shpName)
+        dstRow = dstStartRow + (r - srcStartRow)
+        Set dstCell = wsDst.Cells(dstRow, dstShapeCol)
 
-                If Not pasted Is Nothing Then
-                    With pasted
-                        .Left = dstCell.Left + 2
-                        .Top = dstCell.Top + 2
-                        .Width = shp.Width
-                        .Height = shp.Height
-                        .Placement = xlMoveAndSize
-                        .Name = MakeUniqueShapeName(wsDst, shpName) 'avoid name collision
-                    End With
-                End If
-            End If
+        Set pasted = SafeCopyPasteShape(shp, wsDst)
+
+        If Not pasted Is Nothing Then
+            'Move & size with cells
+            pasted.Placement = xlMoveAndSize
+
+            'Avoid name collision
+            pasted.Name = MakeUniqueShapeName(wsDst, shpName)
+
+            'Fit inside the target cell (padding=2, keepAspect=True)
+            FitShapeToCell pasted, dstCell, 2, True
         End If
+
+NextR:
     Next r
 End Sub
 
+
 '=========================
-' Safe copy/paste with retry + CopyPicture fallback
+' Safe copy/paste shape (retry + CopyPicture fallback)
+' returns the newly pasted shape
 '=========================
-Private Function SafeCopyPasteShape(ByVal shp As Shape, ByVal wsDst As Worksheet, ByVal focusCell As Range) As Shape
+Private Function SafeCopyPasteShape(ByVal shp As Shape, ByVal wsDst As Worksheet) As Shape
     Dim attempt As Long
     Dim ok As Boolean
-
-    wsDst.Activate
 
     For attempt = 1 To 3
         ok = False
         On Error Resume Next
 
-        '1) Normal copy
         shp.Copy
         If Err.Number = 0 Then
             wsDst.Paste
             If Err.Number = 0 Then ok = True
         End If
 
-        '2) Fallback: copy as picture
         If Not ok Then
             Err.Clear
             shp.CopyPicture Appearance:=xlScreen, Format:=xlPicture
@@ -205,13 +203,10 @@ Private Function SafeCopyPasteShape(ByVal shp As Shape, ByVal wsDst As Worksheet
         End If
 
         On Error GoTo 0
+
         If ok Then
             Set SafeCopyPasteShape = wsDst.Shapes(wsDst.Shapes.Count)
-
-            '? Deselect the pasted shape by selecting a cell
-            Application.CutCopyMode = False
-            focusCell.Select
-
+            ClearShapeSelectionSafe   '? deselect shape safely
             Exit Function
         End If
 
@@ -222,9 +217,114 @@ Private Function SafeCopyPasteShape(ByVal shp As Shape, ByVal wsDst As Worksheet
 End Function
 
 
+
 '=========================
-' Ensure shape name is unique in destination sheet
+' Fit a shape inside a cell (resize + center)
 '=========================
+Private Sub FitShapeToCell(ByVal shp As Shape, ByVal tgt As Range, Optional ByVal padding As Double = 2, Optional ByVal keepAspect As Boolean = True)
+
+    Dim maxW As Double
+    Dim maxH As Double
+    Dim rW As Double
+    Dim rH As Double
+    Dim sc As Double
+
+    maxW = tgt.Width - (2 * padding)
+    maxH = tgt.Height - (2 * padding)
+    If maxW < 2 Then maxW = 2
+    If maxH < 2 Then maxH = 2
+
+    On Error Resume Next
+    shp.LockAspectRatio = IIf(keepAspect, msoTrue, msoFalse)
+    On Error GoTo 0
+
+    'Start at cell top-left
+    shp.Left = tgt.Left + padding
+    shp.Top = tgt.Top + padding
+
+    If keepAspect Then
+        rW = maxW / shp.Width
+        rH = maxH / shp.Height
+        sc = IIf(rW < rH, rW, rH)
+
+        shp.Width = shp.Width * sc
+        shp.Height = shp.Height * sc
+
+        'Center in cell
+        shp.Left = tgt.Left + (tgt.Width - shp.Width) / 2
+        shp.Top = tgt.Top + (tgt.Height - shp.Height) / 2
+    Else
+        shp.Width = maxW
+        shp.Height = maxH
+    End If
+End Sub
+
+
+'=========================
+' Delete shapes in a specific column between rows
+'=========================
+Private Sub DeleteShapesInColumnRange(ByVal ws As Worksheet, ByVal targetCol As Long, ByVal startRow As Long, ByVal endRow As Long)
+    Dim i As Long
+    Dim tl As Range
+
+    For i = ws.Shapes.Count To 1 Step -1
+        On Error Resume Next
+        Set tl = ws.Shapes(i).TopLeftCell
+        On Error GoTo 0
+
+        If Not tl Is Nothing Then
+            If tl.Column = targetCol Then
+                If tl.Row >= startRow And tl.Row <= endRow Then
+                    ws.Shapes(i).Delete
+                End If
+            End If
+        End If
+
+        Set tl = Nothing
+    Next i
+End Sub
+
+
+'=========================
+' Header find with normalization (handles extra spaces + special chars)
+'=========================
+Private Function FindHeaderColSmart(ByVal ws As Worksheet, ByVal headerRow As Long, ByVal headerText As String) As Long
+    Dim lastCol As Long, c As Long
+    Dim cellTxt As String
+
+    lastCol = ws.Cells(headerRow, ws.Columns.Count).End(xlToLeft).Column
+
+    For c = 1 To lastCol
+        cellTxt = NormalizeHeader(CStr(ws.Cells(headerRow, c).Value2))
+        If cellTxt = NormalizeHeader(headerText) Then
+            FindHeaderColSmart = c
+            Exit Function
+        End If
+    Next c
+
+    FindHeaderColSmart = 0
+End Function
+
+Private Function NormalizeHeader(ByVal s As String) As String
+    s = Trim$(s)
+    s = Replace(s, ChrW(8470), "No") ' ? -> No
+    s = Replace(s, "ø", "o")         ' ø -> o
+    s = Replace(s, "Ø", "o")
+    s = Replace(s, "º", "")          ' º remove
+    s = Replace(s, "  ", " ")
+    NormalizeHeader = LCase$(s)
+End Function
+
+
+'=========================
+' Shape helpers
+'=========================
+Private Function ShapeExists(ByVal ws As Worksheet, ByVal shpName As String) As Boolean
+    On Error Resume Next
+    ShapeExists = Not ws.Shapes(shpName) Is Nothing
+    On Error GoTo 0
+End Function
+
 Private Function MakeUniqueShapeName(ByVal ws As Worksheet, ByVal baseName As String) As String
     Dim nm As String, n As Long
     nm = baseName
@@ -239,5 +339,9 @@ Private Function MakeUniqueShapeName(ByVal ws As Worksheet, ByVal baseName As St
 End Function
 
 
-
-
+Private Sub ClearShapeSelectionSafe()
+    On Error Resume Next
+    'This clears selection without selecting any cell
+    Application.CommandBars.ExecuteMso "Escape"
+    On Error GoTo 0
+End Sub
