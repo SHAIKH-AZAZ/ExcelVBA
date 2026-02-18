@@ -161,13 +161,13 @@ Private Sub CopyShapesByCodeRow_FitToCell( _
 
         If Not pasted Is Nothing Then
             'Move & size with cells
-            pasted.Placement = xlMoveAndSize
+            pasted.Placement = xlMove
 
             'Avoid name collision
             pasted.Name = MakeUniqueShapeName(wsDst, shpName)
 
             'Fit inside the target cell (padding=2, keepAspect=True)
-            FitShapeToCell pasted, dstCell, 2, True
+            PositionShapeInCell_NoResize pasted, dstCell, 2
         End If
 
 NextR:
@@ -344,4 +344,9 @@ Private Sub ClearShapeSelectionSafe()
     'This clears selection without selecting any cell
     Application.CommandBars.ExecuteMso "Escape"
     On Error GoTo 0
+End Sub
+
+Private Sub PositionShapeInCell_NoResize(ByVal shp As Shape, ByVal tgt As Range, Optional ByVal padding As Double = 2)
+    shp.Left = tgt.Left + (tgt.Width - shp.Width) / 2
+    shp.Top = tgt.Top + (tgt.Height - shp.Height) / 2
 End Sub
