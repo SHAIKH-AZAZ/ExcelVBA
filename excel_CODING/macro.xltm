@@ -1,0 +1,154 @@
+Private Sub BBS_Macro()
+If ActiveWorkbook.Sheets("Sheet()").OLEObjects("Registered").Object.Caption <> 1 Then
+MsgBox "If you want continue your existing BBS in the licensed version, please create a copy of the existing sheets to the licensed BBS format." & Chr(10) & "Open both files and right click sheet tab > Move or Copy > create a copy to licensed BBS Format.", vbInformation, "BBS Program"
+Exit Sub
+End If
+On Error GoTo ErrorMessage
+Application.ScreenUpdating = False
+ActiveSheet.DisplayPageBreaks = False
+ActiveWindow.View = xlNormalView
+ActiveWorkbook.DisplayDrawingObjects = xlAll
+If ActiveSheet.AutoFilterMode = True Then
+Dim RemoveAutoFilter
+RemoveAutoFilter = MsgBox("Program cannot run in the AutoFilter mode." & Chr(10) & Chr(10) & "Remove AutoFilter and save the file?", vbYesNo + vbCritical + vbDefaultButton2, "BBS Program")
+If RemoveAutoFilter = vbYes Then
+ActiveSheet.AutoFilterMode = False
+ActiveWorkbook.Save
+Else
+Exit Sub
+End If
+End If
+Set MyCell = ActiveCell
+If MyCell.Column < 7 Or MyCell.Column > 25 Then
+MsgBox "Use standard format", , "BBS Program"
+Exit Sub
+End If
+MyCell.Offset(0, -1).Range("A1:L1").Borders(xlDiagonalUp).LineStyle = xlNone
+Set s = Sheet1.Range("G1:G1500").Find(MyCell, lookat:=xlWhole)
+If Left(MyCell.Offset(0, -1).FormulaLocal, 4) <> "=IF(" And MyCell.Offset(0, -1) <> "" Then
+With MyCell.Offset(0, -1)
+.Borders(xlDiagonalUp).LineStyle = xlContinuous
+.Borders(xlDiagonalUp).Weight = xlMedium
+.Borders(xlDiagonalUp).ColorIndex = 3
+End With
+Else
+If Sheet1.OLEObjects("SystemOfMeasurement").Object.Caption = "mm" Then
+If Sheet2.OLEObjects("MethodOfBending").Object.Caption = "MANUAL BENDING" Then
+MyCell.Offset(0, -1) = s.Offset(0, -1).FormulaR1C1
+Else
+MyCell.Offset(0, -1) = s.Offset(0, 21).FormulaR1C1
+End If
+Else
+If Sheet2.OLEObjects("MethodOfBending").Object.Caption = "MANUAL BENDING" Then
+MyCell.Offset(0, -1) = s.Offset(0, 22).FormulaR1C1
+Else
+MyCell.Offset(0, -1) = s.Offset(0, 23).FormulaR1C1
+End If
+End If
+End If
+Dim Sh As Shape
+For Each Sh In ActiveSheet.Shapes
+If Not Application.Intersect(Sh.TopLeftCell, MyCell.Offset(0, 11)) Is Nothing Then Sh.Delete
+Next
+If MyCell.EntireRow.RowHeight <> s.EntireRow.RowHeight Then
+MyCell.EntireRow.RowHeight = s.EntireRow.RowHeight
+End If
+s.Offset(0, 11).Copy Destination:=Sheet3.Range("A1")
+Sheet3.Range("H1:Q1").Cut Destination:=Sheet3.Range("H1").Offset(MyCell.Row - 1, MyCell.Column - 7).Range("A1")
+Sheet3.Range("A1").Copy Destination:=MyCell.Offset(0, 11)
+Sheet3.DrawingObjects.Delete
+If Application.Version > 11 Then
+Dim Sh1 As Shape
+For Each Sh1 In ActiveSheet.Shapes
+If Not Application.Intersect(Sh1.TopLeftCell, MyCell.Offset(0, 11)) Is Nothing Then
+Dim Sh2 As Shape
+For Each Sh2 In Sh1.GroupItems
+If Sh2.Type = msoTextBox Then Sh2.OLEFormat.Object.Formula = Sh2.OLEFormat.Object.Formula
+Next
+End If
+Next
+End If
+If (IsNumeric(s.Offset(0, 3).Text)) Then
+MyCell.Offset(0, 3) = s.Offset(0, 3).FormulaR1C1
+End If
+On Error Resume Next 'Added
+If WorksheetFunction.CountA(MyCell.Offset(0, 7).Range("A1:D1")) > 0 Then 'Added
+MyCell.Offset(0, 7).Range("A1:D1").SpecialCells(xlCellTypeConstants, 2).ClearContents: End If 'Added
+On Error GoTo 0 'Added
+Dim MyArray(1 To 1, 1 To 10) As Variant
+MyArray(1, 1) = IIf(IsNumeric(MyCell.Offset(0, 1).Text), MyCell.Offset(0, 1).Formula, s.Offset(0, 1))
+MyArray(1, 2) = IIf(IsNumeric(MyCell.Offset(0, 2).Text), MyCell.Offset(0, 2).Formula, s.Offset(0, 2))
+MyArray(1, 3) = IIf(IsNumeric(MyCell.Offset(0, 3).Text), MyCell.Offset(0, 3).Formula, s.Offset(0, 3))
+MyArray(1, 4) = IIf(IsNumeric(MyCell.Offset(0, 4).Text), MyCell.Offset(0, 4).Formula, s.Offset(0, 4))
+MyArray(1, 5) = IIf(IsNumeric(MyCell.Offset(0, 5).Text), MyCell.Offset(0, 5).Formula, s.Offset(0, 5))
+MyArray(1, 6) = IIf(IsNumeric(MyCell.Offset(0, 6).Text), MyCell.Offset(0, 6).Formula, s.Offset(0, 6))
+MyArray(1, 7) = IIf(IsNumeric(MyCell.Offset(0, 7).Text), MyCell.Offset(0, 7).Formula, s.Offset(0, 7))
+MyArray(1, 8) = IIf(IsNumeric(MyCell.Offset(0, 8).Text), MyCell.Offset(0, 8).Formula, s.Offset(0, 8))
+MyArray(1, 9) = IIf(IsNumeric(MyCell.Offset(0, 9).Text), MyCell.Offset(0, 9).Formula, s.Offset(0, 9))
+MyArray(1, 10) = IIf(IsNumeric(MyCell.Offset(0, 10).Text), MyCell.Offset(0, 10).Formula, s.Offset(0, 10))
+MyCell.Range(Cells(, 2), Cells(, WorksheetFunction.Max(2, s.Offset(0, 11).End(xlToLeft) _
+.Column - 6, MyCell.Offset(0, 11).End(xlToLeft).Column - MyCell.Column + 1))) = MyArray
+On Error Resume Next 'Added
+If WorksheetFunction.CountA(MyCell.Offset(0, 7).Range("A1:D1")) > 0 Then 'Added
+MyCell.Offset(0, 7).Range("A1:D1").SpecialCells(xlCellTypeConstants, 23).EntireColumn.Hidden = False: End If 'Added
+On Error GoTo 0 'Added
+Dim Blank As Integer, Counter As Integer
+Blank = s.Offset(0, 11).End(xlToLeft).Column - 6 'corrected up to here
+For Counter = 1 To 18 - s.Offset(0, 11).End(xlToLeft).Column
+If IsNumeric(MyCell.Offset(0, Blank).Text) Then
+With MyCell.Offset(0, Blank)
+.Borders(xlDiagonalUp).LineStyle = xlContinuous
+.Borders(xlDiagonalUp).Weight = xlMedium
+.Borders(xlDiagonalUp).ColorIndex = 3
+End With
+End If
+Blank = Blank + 1
+Next
+If Selection.Rows.Count > 1 Then
+MyCell.Offset(1, 0).Range("A1").Activate
+End If
+Set x = Selection.Find(, lookat:=xlPart)
+Exit Sub
+ErrorMessage:
+If Err.Number = -2147023838 Then
+MsgBox "Windows Management Instrumentation need to be enabled" & Chr(10) & "Check Windows Management Instrumentation under Services tab in System Configuration Utility" & Chr(10) & "Start > Run > msconfig", , "BBS Program"
+Exit Sub
+End If
+On Error GoTo UndefinedError
+If IsError(MyCell) Then
+MsgBox "Error Value Entered", , "BBS Program"
+Exit Sub
+ElseIf s Is Nothing Then
+Dim Response
+Response = MsgBox("Shape code " & MyCell & " does not exist in this program." & Chr(10) & Chr(10) & "Do you need help to find shape codes ?", vbInformation + vbDefaultButton2 + vbYesNo, "BBS Program")
+If Response = vbYes Then
+ThisWorkbook.Windows(1).Visible = True
+ThisWorkbook.Activate
+On Error Resume Next
+Filter_Form.Show
+If Err.Number = 75 Then
+Dim VersionError As String
+VersionError = IIf(Application.Version = 12, "Please try it in Excel-2003 or Excel-2010.", "Reinstall or repair the Excel")
+MsgBox "Unable to open the form in this version of Excel." & Chr(10) & VersionError, , "BBS Program"
+Exit Sub
+End If
+On Error GoTo 0
+End If
+Set x = Selection.Find(, lookat:=xlPart)
+Exit Sub
+End If
+Dim Ecell As Range
+For Each Ecell In MyCell.Offset(0, -1).Range("A1:K1")
+If IsError(Ecell) Then Ecell.ClearContents
+If Ecell.MergeCells Then Ecell.MergeCells = False
+Next
+Resume
+Exit Sub
+UndefinedError:
+MsgBox "Error number : " & Err.Number & Chr(10) & "Error Description : " & Err.Description & Chr(10) & "Procedure: BBS_Macro" & "Report this error to www.BendingSchedule.com" & Chr(10) & _
+"Now closing " & ThisWorkbook.Name, , "BBS Program"
+ThisWorkbook.Close False
+Application.EnableEvents = True
+Set x = Selection.Find(, lookat:=xlPart)
+End Sub
+
